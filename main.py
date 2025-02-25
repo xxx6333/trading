@@ -3,7 +3,6 @@ from threading import Thread
 import asyncio
 from datetime import datetime,timedelta
 from server import run_server  # Flask 服务器
-from strategy import *
 from config import login
 from mta import *
 # 获取下一个小时的0分钟
