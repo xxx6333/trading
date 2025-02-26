@@ -1,11 +1,7 @@
 import requests
 import pandas as pd
 import numpy as np
-import sys
-import os
 import time
-from datetime import datetime
-# 添加项目根目录到系统路径
 from config import *
 
 # 全局配置
@@ -13,44 +9,22 @@ EPIC = "XRPUSD"        # 交易品种
 RESOLUTION = "HOUR"    # 交易周期
 ATR_PERIOD = 14        # ATR周期
 STOP_MULTIPLIER = 1.5  # 止损倍数
+LEVERAGE = 2
+SPREAD = 0.012
 
-LEVERAGE=2
-SPREAD=0.012
-"""
-#可以update order
-class TradingState:
-    def __init__(self):
-        self.position = {
-            "direction": None,  # 当前持仓方向（BUY/SELL）
-            "dealId": None,
-            "size": None
-        }
-        
-        self.entry_price = None  # 入场价格
-        self.stop_loss = None    # 止损价格
-        self.initial_tp = 0      # 初始止盈价格
-        self.trailing_tp = 0     # 动态止盈价格
-        self.highest = -1        # 多单最高价
-        self.lowest = 1000       # 空单最低价
-        
-    def reset(self):
-        self.__init__()
-
-# 实例化交易状态
-trade_state = TradingState()
-"""
 def calculate_indicators(df):
     """计算技术指标"""
-    # 50 EMA
+    # EMA 计算
     df["ema50"] = df["close"].ewm(span=50, adjust=False).mean()
     df["ema100"] = df["close"].ewm(span=100, adjust=False).mean()
-    # MACD (12, 26, 9)
+
+    # MACD 计算 (12, 26, 9)
     df["ema12"] = df["close"].ewm(span=12, adjust=False).mean()
     df["ema26"] = df["close"].ewm(span=26, adjust=False).mean()
     df["macd"] = df["ema12"] - df["ema26"]
     df["signal"] = df["macd"].ewm(span=9, adjust=False).mean()
 
-    # RSI (14)
+    # RSI 计算 (14)
     delta = df["close"].diff()
     gain = delta.where(delta > 0, 0)
     loss = -delta.where(delta < 0, 0)
@@ -59,27 +33,21 @@ def calculate_indicators(df):
     rs = avg_gain / avg_loss
     df["rsi"] = 100 - (100 / (1 + rs))
 
-    # ATR (ATR_PERIOD)
-    df['prev_close'] = df['close'].shift(1)
-    df['tr'] = np.maximum(df['high'] - df['low'],
-                          np.abs(df['high'] - df['prev_close']),
-                          np.abs(df['low'] - df['prev_close']))
-    df['atr'] = df['tr'].rolling(ATR_PERIOD).mean()
-    df.drop(columns=['prev_close', 'tr'], inplace=True)
+    # ATR 计算 (14)
+    df["tr"] = np.maximum(df["high"] - df["low"],
+                          np.abs(df["high"] - df["close"].shift(1)),
+                          np.abs(df["low"] - df["close"].shift(1)))
+    df["atr"] = df["tr"].rolling(ATR_PERIOD).mean()
+    df.drop(columns=["tr"], inplace=True)
 
     return df
 
 def calculate_position_size(current_price, account_balance):
-    """根据风险比例计算头寸规模"""
+    """计算头寸规模"""
     risk_amount = account_balance * 0.8
-    contract_size = risk_amount / round(current_price, 1)
+    contract_size = (risk_amount / round(current_price, 2)) * LEVERAGE
 
-    if contract_size < 1:
-        print(f"⚠️ 计算的头寸规模 {contract_size} 小于最小交易规模 1")
-        return 1
-    
-    contract_size=contract_size*LEVERAGE
-    return round(contract_size)
+    return max(1, round(contract_size))  # 最小交易规模为 1
 
 def generate_signal(df):
     """生成交易信号"""
@@ -87,17 +55,19 @@ def generate_signal(df):
     prev_row = df.iloc[-2]
 
     long_condition = (
-        (last_row["close"] > last_row["ema100"]) and
-        (last_row["rsi"] >= 50) and
-        (prev_row["macd"] <= prev_row["signal"]) and
-        (last_row["macd"] > last_row["signal"])
+        (last_row["ema50"] > last_row["ema100"]) and  # EMA50 在 EMA100 之上
+        (last_row["close"] > last_row["ema50"]) and   # 价格在 EMA50 之上
+        (last_row["rsi"] > 45) and                    # RSI 高于 45
+        (prev_row["macd"] <= prev_row["signal"]) and 
+        (last_row["macd"] > last_row["signal"])       # MACD 金叉
     )
 
     short_condition = (
-        (last_row["close"] < last_row["ema50"]) and
-        (last_row["rsi"] <= 50) and
-        (prev_row["macd"] >= prev_row["signal"]) and
-        (last_row["macd"] < last_row["signal"])
+        (last_row["ema50"] < last_row["ema100"]) and  # EMA50 在 EMA100 之下
+        (last_row["close"] < last_row["ema50"]) and   # 价格在 EMA50 之下
+        (last_row["rsi"] < 55) and                    # RSI 低于 55
+        (prev_row["macd"] >= prev_row["signal"]) and 
+        (last_row["macd"] < last_row["signal"])       # MACD 死叉
     )
 
     if long_condition:
@@ -107,9 +77,9 @@ def generate_signal(df):
     return None
 
 def execute_trade(direction, cst, token, df):
-    """执行交易订单"""
-    current_atr = df["atr"].iloc[-1]
+    """执行交易"""
     current_price = df["close"].iloc[-1]
+    current_atr = df["atr"].iloc[-1]
 
     account = get_account_balance(cst, token)
     if not account:
@@ -121,10 +91,10 @@ def execute_trade(direction, cst, token, df):
     
     if direction == "BUY":
         stop_loss = current_price - current_atr * STOP_MULTIPLIER
-        initial_tp = current_price + 0.012 + current_atr * STOP_MULTIPLIER * 1.3
+        initial_tp = current_price + SPREAD + current_atr * STOP_MULTIPLIER * 1.3
     else:
         stop_loss = current_price + current_atr * STOP_MULTIPLIER
-        initial_tp = current_price - 0.012 - current_atr * STOP_MULTIPLIER * 1.3
+        initial_tp = current_price - SPREAD - current_atr * STOP_MULTIPLIER * 1.3
 
     order = {
         "epic": EPIC,
@@ -134,10 +104,8 @@ def execute_trade(direction, cst, token, df):
         "stopLevel": round(stop_loss, 3),
         "profitLevel": round(initial_tp, 3),
         "guaranteedStop": False,
-        "oco":True 
+        "oco": True
     }
-    #if direction == "SELL":
-        #order["stopLevel"] = round(stop_loss, 3)
 
     response = requests.post(
         f"{BASE_URL}positions",
@@ -146,117 +114,24 @@ def execute_trade(direction, cst, token, df):
     )
 
     if response.status_code == 200:
-        position_data = response.json()
-        deal_reference = position_data.get("dealReference")
-
-        if not deal_reference:
-            print("❌ 订单失败: 未返回 dealReference")
-            return
-
-        deal_id = get_deal_id(deal_reference, cst, token)
-        if not deal_id:
-            print("❌ 订单失败: 无法获取 dealId")
-            return
-        """
-        trade_state.position = {
-            "direction": direction,
-            "dealId": deal_id,
-            "size": size
-        }
-        
-        trade_state.entry_price = current_price
-        trade_state.stop_loss = stop_loss
-        trade_state.initial_tp = initial_tp
-        trade_state.trailing_tp = initial_tp
-        trade_state.highest = current_price if direction == "BUY" else None
-        trade_state.lowest = current_price if direction == "SELL" else None
-        """
-        if direction == "BUY":
-            print(f"✅ {direction} 数量: {size} | 买入价: {current_price+0.01:.2f} | 止盈: {initial_tp:.2f}")
-        else:
-            print(f"✅ {direction} 数量: {size} | 买出价: {current_price-0.01:.2f} | 止损: {stop_loss:.2f} | 止盈: {initial_tp:.2f}")
+        print(f"✅ {direction} {size} | 价格: {current_price:.3f} | 止盈: {initial_tp:.3f} | 止损: {stop_loss:.3f}")
     else:
         print(f"❌ 订单失败: {response.status_code} - {response.text}")
 
-"""
-def check_exit_conditions(cst, token, df):
-    if not trade_state.position or not trade_state.position["dealId"]:
-        return
-
-    current_price = df["close"].iloc[-1]
-    current_atr = df["atr"].iloc[-1]
-
-    if trade_state.position["direction"] == "BUY":
-        trade_state.highest = max(trade_state.highest, current_price)
-        trade_state.trailing_tp = trade_state.highest - current_atr * STOP_MULTIPLIER
-        final_tp = max(trade_state.initial_tp, trade_state.trailing_tp)
-        if current_price <= trade_state.stop_loss:
-            exit_reason = "触发止损"
-        elif current_price >= final_tp:
-            exit_reason = "达到止盈"
-        else:
-            exit_reason = None
-    elif trade_state.position["direction"] == "SELL":
-        trade_state.lowest = min(trade_state.lowest, current_price)
-        trade_state.trailing_tp = trade_state.lowest + current_atr * STOP_MULTIPLIER
-        final_tp = min(trade_state.initial_tp, trade_state.trailing_tp)
-        if current_price >= trade_state.stop_loss:
-            exit_reason = "触发止损"
-        elif current_price <= final_tp:
-            exit_reason = "达到止盈"
-        else:
-            exit_reason = None
-    else:
-        exit_reason = None
-
-    if exit_reason:
-        close_all_positions(cst, token)
-        print(f"🚪 平仓原因: {exit_reason} | 价格: {current_price:.2f}")
-
-
-def close_all_positions(cst, security_token):
-    # 获取所有当前仓位
-    positions = get_all_positions(cst, security_token)
-    
-    if not positions:
-        print("⚠️ 无持仓可平")
-        return False
-    
-    headers = {"CST": cst, "X-SECURITY-TOKEN": security_token, "Content-Type": "application/json"}
-    success = True
-    
-    for item in positions:
-        position = item.get('position', {})
-        deal_id = position.get('dealId')
-        
-        if not deal_id:
-            print(f"❌ 未找到仓位的 dealId: {position}")
-            success = False
-            continue
-        
-        url = BASE_URL + f"positions/{deal_id}"
-        response = requests.delete(url, headers=headers)
-        
-        if response.status_code == 200:
-            print(f"🔵 成功平仓，dealId: {deal_id}")
-        else:
-            print(f"❌ 平仓失败 dealId {deal_id}: {response.text}")
-            success = False
-    
-    return success
-"""
-def get_positions(cst, security_token):
-    url = BASE_URL + "positions"
-    headers = {"CST": cst, "X-SECURITY-TOKEN": security_token, "Content-Type": "application/json"}
-    response = requests.get(url, headers=headers)
+def get_positions(cst, token):
+    """获取当前持仓"""
+    response = requests.get(f"{BASE_URL}positions", headers={
+        "CST": cst, "X-SECURITY-TOKEN": token, "Content-Type": "application/json"
+    })
     
     if response.status_code == 200:
-        return response.json().get('positions', [])
+        return response.json().get("positions", [])
     else:
         print(f"❌ 获取持仓信息失败: {response.text}")
         return []
 
 def mta(cst, token):
+    """主策略逻辑"""
     if get_positions(cst, token):
         print("🟡 当前已有持仓，跳过信号检查")
         return
@@ -273,6 +148,5 @@ def mta(cst, token):
     # 生成信号
     signal = generate_signal(df)
     if signal:
-        #trade_state.reset()
         execute_trade(signal, cst, token, df)
         
