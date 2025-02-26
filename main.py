@@ -9,17 +9,11 @@ from mta import *
 def get_next_half_hour():
     now = datetime.now()
     # 获取下一个整点或半点（例如 00:00, 00:30, 01:00, 01:30 等）
-    next_time = now.replace(minute=0, second=5, microsecond=0)
-    
-    # 如果当前时间已经过了整点或半点，则加上半小时或整点
-    if now >= next_time:
-        next_time += timedelta(hours=1)
-    
-    # 如果当前时间在整点和半点之间（例如：00:15、00:20），调整为下一个半点（例如：00:30）
-    if now.minute >= 30:
-        next_time = next_time.replace(minute=30)
+    if now.minute < 30:
+        next_time = now.replace(minute=30, second=5, microsecond=0)
     else:
-        next_time = next_time.replace(minute=0)
+        # 如果当前时间在 30 分钟之后，设置为下一个整点（例如 16:30 -> 17:00）
+        next_time = now.replace(hour=now.hour + 1, minute=0, second=5, microsecond=0)
     
     return next_time
 
