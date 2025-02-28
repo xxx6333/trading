@@ -93,7 +93,7 @@ def execute_trade(direction, cst, token, df):
         stop_loss = current_price - current_atr * STOP_MULTIPLIER
         initial_tp = current_price + SPREAD + current_atr * STOP_MULTIPLIER * 1.3
     else:
-        stop_loss = current_price + current_atr * STOP_MULTIPLIER
+        stop_loss = current_price + SPREAD + current_atr * STOP_MULTIPLIER
         initial_tp = current_price - SPREAD - current_atr * STOP_MULTIPLIER * 1.3
 
     order = {
