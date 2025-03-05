@@ -74,7 +74,7 @@ async def run_trading():
             cst, security_token = login()
 
             # 获取当前时间
-            now = datetime.datetime.now()
+            now = datetime.now()
 
             # 计算当前时间到下一个 5 分钟的03秒时刻的时间差
             next_run_time = (now + datetime.timedelta(minutes=5)).replace(second=3, microsecond=0)
