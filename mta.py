@@ -6,7 +6,7 @@ from config import *
 
 # 全局配置
 EPIC = "XRPUSD"        # 交易品种
-RESOLUTION = "MINUTE_30"    # 交易周期
+RESOLUTION = "MINUTE_5"    # 交易周期
 ATR_PERIOD = 14        # ATR周期
 STOP_MULTIPLIER = 1.5  # 止损倍数
 LEVERAGE = 2
