@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from server import run_server  # Flask 服务器
 from config import login
 from mta import *
-'''
+
 # 获取下一个整点或半点（秒设置为 5）
 def get_next_half_hour():
     now = datetime.now()
@@ -66,31 +66,7 @@ async def run_trading():
         except KeyboardInterrupt:
             print("\n🛑 交易中断，退出程序")
             break
-'''
-async def run_trading():
-    trade_count = 0  # 初始化交易次数计数器
-    while True:
-        try:
-            cst, security_token = login()
             
-            while True:        
-                # 运行交易策略
-                #普通
-                #ema_trend(cst, security_token)
-
-                mta(cst, security_token)
-                #deepseek(cst,security_token)
-                print(f"⏳ 等待 1 分钟后执行第{trade_count + 1}次交易...\n----------------------")
-                #等待下一次执行
-                await asyncio.sleep(60)
-
-                # 更新交易次数
-                trade_count += 1
-
-        except KeyboardInterrupt:
-            print("\n🛑 交易中断，退出程序")
-            break
-
 if __name__ == "__main__":
     try:
         # 在新线程中运行 Flask 服务器
