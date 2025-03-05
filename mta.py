@@ -15,8 +15,8 @@ SPREAD = 0.012
 def calculate_indicators(df):
     """计算技术指标"""
     # EMA 计算
-    df["ema50"] = df["close"].ewm(span=50, adjust=False).mean()
-    df["ema100"] = df["close"].ewm(span=100, adjust=False).mean()
+    df["ema50"] = df["close"].ewm(span=9, adjust=False).mean()
+    df["ema100"] = df["close"].ewm(span=21, adjust=False).mean()
 
     # MACD 计算 (12, 26, 9)
     df["ema12"] = df["close"].ewm(span=12, adjust=False).mean()
