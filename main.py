@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from server import run_server  # Flask 服务器
 from config import login
 from mta import *
-
+'''
 # 获取下一个整点或半点（秒设置为 5）
 def get_next_half_hour():
     now = datetime.now()
@@ -65,6 +65,44 @@ async def run_trading():
 
         except KeyboardInterrupt:
             print("\n🛑 交易中断，退出程序")
+            break
+'''         
+async def run_trading():
+    # 初始化交易次数计数器
+    while True:
+        try:
+            cst, security_token = login()
+
+            # 获取当前时间
+            now = datetime.datetime.now()
+
+            # 计算当前时间到下一个 5 分钟的03秒时刻的时间差
+            next_run_time = (now + datetime.timedelta(minutes=5)).replace(second=3, microsecond=0)
+            
+            # 如果当前时间已经是目标时刻（例如 16:10:03），则不需要等待
+            if now.minute % 5 == 0 and now.second == 3:
+                time_to_wait = 0
+            else:
+                # 如果当前时间已经过了目标时间（比如现在是 16:10:05），则计算下一个目标时间
+                if now.second > 3:
+                    next_run_time += datetime.timedelta(minutes=5)
+                time_to_wait = (next_run_time - now).total_seconds()
+
+            # 等待直到下一个目标时刻（每5分钟的03秒）
+            await asyncio.sleep(time_to_wait)
+
+            # 执行交易
+            mta(cst, security_token)
+
+            # 进入每5分钟的03秒执行一次的循环
+            while True:
+                # 每次执行交易后，等待 300 秒（5 分钟）
+                await asyncio.sleep(300)  # 等待 5 分钟
+
+                # 执行交易
+                mta(cst, security_token)
+
+        except KeyboardInterrupt:
             break
             
 if __name__ == "__main__":
