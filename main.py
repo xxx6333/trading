@@ -85,7 +85,7 @@ async def run_trading():
             else:
                 # 如果当前时间已经过了目标时间（比如现在是 16:10:05），则计算下一个目标时间
                 if now.second > 3:
-                    next_run_time += datetime.timedelta(minutes=5)
+                    next_run_time += timedelta(minutes=5)
                 time_to_wait = (next_run_time - now).total_seconds()
 
             # 等待直到下一个目标时刻（每5分钟的03秒）
