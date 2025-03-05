@@ -77,7 +77,7 @@ async def run_trading():
             now = datetime.now()
 
             # 计算当前时间到下一个 5 分钟的03秒时刻的时间差
-            next_run_time = (now + datetime.timedelta(minutes=5)).replace(second=3, microsecond=0)
+            next_run_time = (now + timedelta(minutes=5)).replace(second=3, microsecond=0)
             
             # 如果当前时间已经是目标时刻（例如 16:10:03），则不需要等待
             if now.minute % 5 == 0 and now.second == 3:
