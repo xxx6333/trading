@@ -1,7 +1,6 @@
 from threading import Thread
 import asyncio
 from datetime import datetime, timedelta
-from server import run_server  # Flask 服务器
 from config import login
 from mta import *
 
@@ -70,13 +69,6 @@ async def run_trading():
 
 if __name__ == "__main__":
     try:
-        # 在新线程中运行 Flask 服务器
-        flask_thread = Thread(target=run_server)
-        flask_thread.daemon = True  # 使 Flask 线程在主线程退出时自动结束
-        flask_thread.start()
-
-        # 启动交易（确保异步运行）
         asyncio.run(run_trading())
-
     except KeyboardInterrupt:
         print("\n🛑 主程序被手动中断，退出程序")
